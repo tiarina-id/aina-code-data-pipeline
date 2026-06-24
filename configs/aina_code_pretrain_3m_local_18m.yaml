@@ -1,0 +1,69 @@
+project_name: aina-code-3m-local
+output_mode: pretrain
+artifact_format: tokenized_binary_shards
+target_tokens: 18000000
+sequence_length: 2048
+tokens_per_sample: 2048
+loss_shift: model_internal
+val_ratio: 0.001
+seed: 42
+
+tokenizer_path: /tmp/aina-code-datasets/tokenizers/aina-code-v1
+fallback_tokenizer: gpt2
+output_dir: /tmp/aina-code-datasets/pretrain/aina-code-3m-local-18m
+work_dir: /tmp/aina-code-datasets/work/pretrain-3m-local-18m
+progress_path: /tmp/aina-code-datasets/work/pretrain-3m-local-18m/progress.json
+report_path: /tmp/aina-code-datasets/work/pretrain-3m-local-18m/reports/dataset_report.json
+
+s3_output: s3://aina-code-datasets/v1/pretrain/aina-code-3m-local-18m/
+
+base_ratio: 0.97
+mixed_instruct_ratio: 0.03
+checkpoint_interval_tokens: 1000000
+s3_upload_interval_tokens: 1000000
+shard_sequences: 4096
+
+sources:
+  - name: github_code_clean
+    type: base
+    mix_role: base
+    hf_id: codeparrot/github-code-clean
+    data_file_limit: 16
+    target_tokens: 12000000
+
+  - name: code_search_net
+    type: base
+    mix_role: base
+    hf_id: claudios/code_search_net
+    target_tokens: 4000000
+
+  - name: fineweb_edu
+    type: base
+    mix_role: base
+    hf_id: HuggingFaceFW/fineweb-edu
+    target_tokens: 1460000
+
+  - name: magicoder_oss
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
+    target_tokens: 180000
+
+  - name: magicoder_evol
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: ise-uiuc/Magicoder-Evol-Instruct-110K
+    target_tokens: 120000
+
+  - name: taco
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: BAAI/TACO
+    target_tokens: 140000
+
+  - name: mbpp
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: google-research-datasets/mbpp
+    target_tokens: 100000
+

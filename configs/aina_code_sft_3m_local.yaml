@@ -1,0 +1,52 @@
+project_name: aina-code-3m-local-sft
+output_mode: sft_jsonl
+artifact_format: jsonl_messages
+target_tokens: 300000
+sequence_length: 2048
+val_ratio: 0.01
+seed: 42
+
+tokenizer_path: /tmp/aina-code-datasets/tokenizers/aina-code-v1
+fallback_tokenizer: gpt2
+output_dir: /tmp/aina-code-datasets/sft/aina-code-3m-local-instruct-v1
+work_dir: /tmp/aina-code-datasets/work/sft-3m-local
+progress_path: /tmp/aina-code-datasets/work/sft-3m-local/progress.json
+report_path: /tmp/aina-code-datasets/work/sft-3m-local/reports/dataset_report.json
+
+s3_output: s3://aina-code-datasets/v1/sft/aina-code-3m-local-instruct-v1/
+
+checkpoint_interval_tokens: 100000
+s3_upload_interval_tokens: 100000
+sft_samples_per_shard: 10000
+
+sources:
+  - name: opencodeinstruct
+    type: instruct
+    mix_role: instruct_only
+    hf_id: nvidia/OpenCodeInstruct
+    target_tokens: 180000
+
+  - name: code_feedback
+    type: instruct
+    mix_role: instruct_only
+    hf_id: HuggingFaceH4/Code-Feedback
+    target_tokens: 50000
+
+  - name: magicoder_oss
+    type: instruct
+    mix_role: instruct_only
+    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
+    target_tokens: 30000
+
+  - name: magicoder_evol
+    type: instruct
+    mix_role: instruct_only
+    hf_id: ise-uiuc/Magicoder-Evol-Instruct-110K
+    target_tokens: 20000
+
+  - name: mbpp
+    type: instruct
+    mix_role: instruct_only
+    hf_id: google-research-datasets/mbpp
+    target_tokens: 20000
+

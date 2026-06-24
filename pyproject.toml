@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aina-preproc"
+version = "0.1.0"
+description = "Dataset preprocessing pipeline for Aina-1-Code training data."
+readme = "PLAN.md"
+requires-python = ">=3.10"
+dependencies = [
+  "boto3>=1.34",
+  "datasets>=2.19",
+  "numpy>=1.26",
+  "pyyaml>=6.0",
+  "tokenizers>=0.19",
+  "tqdm>=4.66",
+  "transformers>=4.41",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+aina-build-dataset = "aina_preproc.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["aina_preproc*"]
+
