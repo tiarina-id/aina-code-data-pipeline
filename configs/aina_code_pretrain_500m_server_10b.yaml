@@ -25,6 +25,7 @@ shard_sequences: 65536
 write_intermediate_jsonl: false
 num_workers: 24
 worker_batch_size: 32
+worker_start_method: fork
 log_interval_seconds: 60
 
 sources:

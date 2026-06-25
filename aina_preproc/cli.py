@@ -17,6 +17,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sequence-length", type=int, default=None, help="Override packed sequence length.")
     parser.add_argument("--num-workers", type=int, default=None, help="Parallel workers for pretrain transform/tokenize.")
     parser.add_argument("--worker-batch-size", type=int, default=None, help="Rows per worker task for pretrain.")
+    parser.add_argument(
+        "--worker-start-method",
+        choices=("fork", "spawn", "forkserver"),
+        default=None,
+        help="Multiprocessing start method for pretrain workers.",
+    )
     parser.add_argument("--log-interval-seconds", type=int, default=None, help="Seconds between progress log lines.")
     parser.add_argument("--skip-upload", action="store_true", help="Do not upload final output to S3.")
     parser.add_argument("--resume", dest="resume", action="store_true", default=True, help="Resume from progress file.")
@@ -41,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
         report_path=args.report_path,
         num_workers=args.num_workers,
         worker_batch_size=args.worker_batch_size,
+        worker_start_method=args.worker_start_method,
         log_interval_seconds=args.log_interval_seconds,
     )
     run_pipeline(

@@ -55,6 +55,7 @@ class PipelineConfig:
     write_intermediate_jsonl: bool = True
     num_workers: int = 1
     worker_batch_size: int = 32
+    worker_start_method: str = "fork"
     log_interval_seconds: int = 60
 
     @property
@@ -88,6 +89,7 @@ class PipelineConfig:
         report_path: str | None = None,
         num_workers: int | None = None,
         worker_batch_size: int | None = None,
+        worker_start_method: str | None = None,
         log_interval_seconds: int | None = None,
     ) -> "PipelineConfig":
         return dataclasses.replace(
@@ -100,6 +102,7 @@ class PipelineConfig:
             report_path=report_path if report_path is not None else self.report_path,
             num_workers=num_workers if num_workers is not None else self.num_workers,
             worker_batch_size=worker_batch_size if worker_batch_size is not None else self.worker_batch_size,
+            worker_start_method=worker_start_method if worker_start_method is not None else self.worker_start_method,
             log_interval_seconds=log_interval_seconds if log_interval_seconds is not None else self.log_interval_seconds,
         )
 
@@ -120,6 +123,7 @@ def config_hash(config: PipelineConfig) -> str:
         "write_intermediate_jsonl",
         "num_workers",
         "worker_batch_size",
+        "worker_start_method",
         "log_interval_seconds",
     ]:
         payload.pop(operational_key, None)

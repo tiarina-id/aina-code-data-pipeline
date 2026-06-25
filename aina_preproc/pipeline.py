@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import dataclasses
+import multiprocessing as mp
 import time
 from collections import deque
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -375,13 +376,18 @@ def process_pretrain_source_parallel(
     rows = iter_limited_cursor_rows(cursor_rows, max_samples)
     batches = iter_cursor_batches(rows, batch_size)
     pending: deque[Future] = deque()
+    mp_context = pretrain_worker_mp_context(config.worker_start_method)
     executor = ProcessPoolExecutor(
         max_workers=workers,
+        mp_context=mp_context,
         initializer=init_pretrain_worker,
         initargs=(source, config.tokenizer_path, config.fallback_tokenizer),
     )
 
-    log_progress(f"source={source.name} parallel_workers={workers} worker_batch_size={batch_size}")
+    log_progress(
+        f"source={source.name} parallel_workers={workers} worker_batch_size={batch_size} "
+        f"worker_start_method={config.worker_start_method}"
+    )
     try:
         def submit_next() -> bool:
             try:
@@ -539,6 +545,15 @@ def init_pretrain_worker(
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     _PRETRAIN_WORKER_SOURCE = source
     _PRETRAIN_WORKER_TOKENIZER = load_tokenizer(tokenizer_path, fallback_tokenizer)
+
+
+def pretrain_worker_mp_context(start_method: str) -> mp.context.BaseContext:
+    available = mp.get_all_start_methods()
+    if start_method not in available:
+        raise ValueError(
+            f"Unsupported worker_start_method={start_method!r}; available methods: {', '.join(available)}"
+        )
+    return mp.get_context(start_method)
 
 
 def transform_pretrain_batch(batch: list[CursorRow]) -> list[dict[str, Any]]:
