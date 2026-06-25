@@ -107,7 +107,7 @@ def run_pretrain_pipeline(
             if not source_included(config, source):
                 continue
 
-            source_token_limit = min(source.target_tokens, config.target_tokens - state.actual_tokens)
+            source_token_limit = source.target_tokens
             source_report = process_source(
                 config,
                 source,
@@ -741,7 +741,7 @@ def run_sft_jsonl_pipeline(
                 break
             if not source_included(config, source):
                 continue
-            source_token_limit = min(source.target_tokens, config.target_tokens - state.sft_stats.total_tokens)
+            source_token_limit = source.target_tokens
             source_report = process_sft_source(
                 config,
                 source,
