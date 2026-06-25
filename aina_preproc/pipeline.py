@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import os
 import dataclasses
 import time
+from collections import deque
+from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 from .config import PipelineConfig, SourceConfig, config_hash, ensure_dirs
 from .dedup import ExactDeduper
@@ -24,6 +27,9 @@ from .report import log_progress, write_dataset_report, write_metadata
 from .sft import SftJsonlShardWriter
 from .tokenize import copy_tokenizer_artifacts, load_tokenizer
 from .upload_s3 import download_files, download_prefix, get_json, put_json, upload_directory, upload_files
+
+_PRETRAIN_WORKER_SOURCE: SourceConfig | None = None
+_PRETRAIN_WORKER_TOKENIZER: Any | None = None
 
 
 def run_pipeline(
@@ -77,6 +83,8 @@ def run_pretrain_pipeline(
     elif resume:
         restore_outputs_to_checkpoint(config, state)
 
+    if config.num_workers > 1:
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     tokenizer = load_tokenizer(config.tokenizer_path, config.fallback_tokenizer)
     source_reports: list[dict[str, Any]] = []
     dedup_path = Path(config.work_dir) / "dedup" / "exact_hashes.sqlite"
@@ -217,8 +225,46 @@ def process_source(
     filtered_path = config.filtered_dir / f"{source.name}.jsonl"
     accepted_tokens = state.source_tokens.get(source.name, 0)
     sample_count = 0
+    progress_logger = SourceProgressLogger(
+        config,
+        source.name,
+        state,
+        mode="pretrain",
+        source_token_limit=token_limit,
+        initial_source_tokens=accepted_tokens,
+    )
 
-    log_progress(f"source={source.name} start processed_offset={processed_before} target_tokens={token_limit}")
+    log_progress(
+        f"source={source.name} start mode=pretrain processed_offset={processed_before} "
+        f"source_target_tokens={format_count(token_limit)} total_target_tokens={format_count(config.target_tokens)} "
+        f"workers={max(1, config.num_workers)} log_interval={config.log_interval_seconds}s"
+    )
+    if config.num_workers > 1:
+        process_pretrain_source_parallel(
+            config,
+            source,
+            state,
+            deduper,
+            writer,
+            cursor_rows,
+            normalized_path,
+            filtered_path,
+            accepted_tokens=accepted_tokens,
+            token_limit=token_limit,
+            max_samples=max_samples,
+            upload_enabled=upload_enabled,
+            progress_logger=progress_logger,
+        )
+        progress_logger.maybe_log(force=True)
+        return {
+            "name": source.name,
+            "type": source.type,
+            "processed_samples": state.processed_samples.get(source.name, 0),
+            "accepted_tokens": state.source_tokens.get(source.name, 0),
+            "normalized_count": state.normalized_counts.get(source.name, 0),
+            "filtered_count": state.filtered_counts.get(source.name, 0),
+        }
+
     for file_index, next_row_offset, row in cursor_rows:
         if max_samples is not None and sample_count >= max_samples:
             break
@@ -233,6 +279,7 @@ def process_source(
         record = normalize_row(source, row)
         if record is None:
             increment(state.rejected_counts, "normalize_failed")
+            progress_logger.maybe_log()
             continue
 
         if config.write_intermediate_jsonl:
@@ -243,10 +290,12 @@ def process_source(
         filter_result = should_keep(record)
         if not filter_result.keep:
             increment(state.rejected_counts, filter_result.reason or "filtered")
+            progress_logger.maybe_log()
             continue
 
         if deduper.is_duplicate(record):
             state.deduplicated_count += 1
+            progress_logger.maybe_log()
             continue
 
         if config.write_intermediate_jsonl:
@@ -258,12 +307,14 @@ def process_source(
         tokens = tokenizer.encode_with_eos(text)
         if not tokens:
             increment(state.rejected_counts, "empty_tokens")
+            progress_logger.maybe_log()
             continue
 
         writer.add_tokens(tokens)
         state.pack_stats = writer.stats
         accepted_tokens += len(tokens)
         state.source_tokens[source.name] = accepted_tokens
+        progress_logger.maybe_log()
 
         if state.actual_tokens >= config.target_tokens:
             break
@@ -288,6 +339,7 @@ def process_source(
             write_partial_artifacts(config, state)
             upload_checkpoint(config)
 
+    progress_logger.maybe_log(force=True)
     return {
         "name": source.name,
         "type": source.type,
@@ -296,6 +348,330 @@ def process_source(
         "normalized_count": state.normalized_counts.get(source.name, 0),
         "filtered_count": state.filtered_counts.get(source.name, 0),
     }
+
+
+CursorRow = tuple[int | None, int | None, dict[str, Any]]
+
+
+def process_pretrain_source_parallel(
+    config: PipelineConfig,
+    source: SourceConfig,
+    state: ProgressState,
+    deduper: ExactDeduper,
+    writer: PackedDatasetWriter,
+    cursor_rows: Iterable[CursorRow],
+    normalized_path: Path,
+    filtered_path: Path,
+    *,
+    accepted_tokens: int,
+    token_limit: int,
+    max_samples: int | None,
+    upload_enabled: bool,
+    progress_logger: "SourceProgressLogger",
+) -> None:
+    workers = max(1, config.num_workers)
+    batch_size = max(1, config.worker_batch_size)
+    max_pending = workers * 2
+    rows = iter_limited_cursor_rows(cursor_rows, max_samples)
+    batches = iter_cursor_batches(rows, batch_size)
+    pending: deque[Future] = deque()
+    executor = ProcessPoolExecutor(
+        max_workers=workers,
+        initializer=init_pretrain_worker,
+        initargs=(source, config.tokenizer_path, config.fallback_tokenizer),
+    )
+
+    log_progress(f"source={source.name} parallel_workers={workers} worker_batch_size={batch_size}")
+    try:
+        def submit_next() -> bool:
+            try:
+                batch = next(batches)
+            except StopIteration:
+                return False
+            pending.append(executor.submit(transform_pretrain_batch, batch))
+            return True
+
+        for _ in range(max_pending):
+            if not submit_next():
+                break
+
+        while pending:
+            future = pending.popleft()
+            batch_results = future.result()
+            for result in batch_results:
+                if accepted_tokens >= token_limit or state.actual_tokens >= config.target_tokens:
+                    return
+                accepted_tokens = consume_pretrain_transform_result(
+                    config,
+                    source,
+                    state,
+                    deduper,
+                    writer,
+                    normalized_path,
+                    filtered_path,
+                    result,
+                    accepted_tokens=accepted_tokens,
+                    upload_enabled=upload_enabled,
+                    progress_logger=progress_logger,
+                )
+            submit_next()
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
+def consume_pretrain_transform_result(
+    config: PipelineConfig,
+    source: SourceConfig,
+    state: ProgressState,
+    deduper: ExactDeduper,
+    writer: PackedDatasetWriter,
+    normalized_path: Path,
+    filtered_path: Path,
+    result: dict[str, Any],
+    *,
+    accepted_tokens: int,
+    upload_enabled: bool,
+    progress_logger: "SourceProgressLogger",
+) -> int:
+    file_index = result.get("file_index")
+    next_row_offset = result.get("next_row_offset")
+    state.processed_samples[source.name] = state.processed_samples.get(source.name, 0) + 1
+    if file_index is not None and next_row_offset is not None:
+        state.source_file_indices[source.name] = file_index
+        state.source_row_offsets[source.name] = next_row_offset
+
+    record = result.get("record")
+    reject_reason = result.get("reject_reason")
+    if record is None:
+        increment(state.rejected_counts, reject_reason or "normalize_failed")
+        progress_logger.maybe_log()
+        return accepted_tokens
+
+    if config.write_intermediate_jsonl:
+        append_jsonl(normalized_path, record)
+        state.normalized_counts[source.name] = state.normalized_counts.get(source.name, 0) + 1
+        state.normalized_bytes[str(normalized_path)] = file_size(normalized_path)
+
+    if reject_reason and "tokens" not in result:
+        increment(state.rejected_counts, reject_reason)
+        progress_logger.maybe_log()
+        return accepted_tokens
+
+    if deduper.is_duplicate(record):
+        state.deduplicated_count += 1
+        progress_logger.maybe_log()
+        return accepted_tokens
+
+    tokens = result.get("tokens") or []
+    if not tokens:
+        increment(state.rejected_counts, reject_reason or "empty_tokens")
+        progress_logger.maybe_log()
+        return accepted_tokens
+
+    if config.write_intermediate_jsonl:
+        append_jsonl(filtered_path, record)
+        state.filtered_counts[source.name] = state.filtered_counts.get(source.name, 0) + 1
+        state.filtered_bytes[str(filtered_path)] = file_size(filtered_path)
+
+    token_count = len(tokens)
+    writer.add_tokens(tokens)
+    state.pack_stats = writer.stats
+    accepted_tokens += token_count
+    state.source_tokens[source.name] = accepted_tokens
+    progress_logger.maybe_log()
+
+    if state.actual_tokens >= config.target_tokens:
+        return accepted_tokens
+
+    if state.actual_tokens and state.actual_tokens % config.checkpoint_interval_tokens < token_count:
+        writer.flush_handles()
+        update_output_file_state(config, state)
+        save_progress(config.progress_path, state)
+        deduper.checkpoint()
+        log_source_progress(config, source.name, state)
+
+    if (
+        upload_enabled
+        and config.s3_upload_interval_tokens
+        and state.actual_tokens
+        and state.actual_tokens % config.s3_upload_interval_tokens < token_count
+    ):
+        writer.flush_handles()
+        update_output_file_state(config, state)
+        save_progress(config.progress_path, state)
+        deduper.checkpoint()
+        write_partial_artifacts(config, state)
+        upload_checkpoint(config)
+
+    return accepted_tokens
+
+
+def iter_limited_cursor_rows(
+    rows: Iterable[CursorRow],
+    max_samples: int | None,
+) -> Iterator[CursorRow]:
+    for index, row in enumerate(rows):
+        if max_samples is not None and index >= max_samples:
+            break
+        yield row
+
+
+def iter_cursor_batches(
+    rows: Iterable[CursorRow],
+    batch_size: int,
+) -> Iterator[list[CursorRow]]:
+    batch: list[CursorRow] = []
+    for row in rows:
+        batch.append(row)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def init_pretrain_worker(
+    source: SourceConfig,
+    tokenizer_path: str,
+    fallback_tokenizer: str | None,
+) -> None:
+    global _PRETRAIN_WORKER_SOURCE, _PRETRAIN_WORKER_TOKENIZER
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    _PRETRAIN_WORKER_SOURCE = source
+    _PRETRAIN_WORKER_TOKENIZER = load_tokenizer(tokenizer_path, fallback_tokenizer)
+
+
+def transform_pretrain_batch(batch: list[CursorRow]) -> list[dict[str, Any]]:
+    if _PRETRAIN_WORKER_SOURCE is None or _PRETRAIN_WORKER_TOKENIZER is None:
+        raise RuntimeError("Pretrain worker was not initialized.")
+
+    results: list[dict[str, Any]] = []
+    for file_index, next_row_offset, row in batch:
+        result: dict[str, Any] = {
+            "file_index": file_index,
+            "next_row_offset": next_row_offset,
+        }
+        record = normalize_row(_PRETRAIN_WORKER_SOURCE, row)
+        if record is None:
+            result["reject_reason"] = "normalize_failed"
+            results.append(result)
+            continue
+
+        result["record"] = record
+        filter_result = should_keep(record)
+        if not filter_result.keep:
+            result["reject_reason"] = filter_result.reason or "filtered"
+            results.append(result)
+            continue
+
+        tokens = _PRETRAIN_WORKER_TOKENIZER.encode_with_eos(render_training_text(record))
+        if not tokens:
+            result["reject_reason"] = "empty_tokens"
+        else:
+            result["tokens"] = tokens
+        results.append(result)
+    return results
+
+
+class SourceProgressLogger:
+    def __init__(
+        self,
+        config: PipelineConfig,
+        source_name: str,
+        state: ProgressState,
+        *,
+        mode: str,
+        source_token_limit: int,
+        initial_source_tokens: int,
+    ) -> None:
+        self.config = config
+        self.source_name = source_name
+        self.state = state
+        self.mode = mode
+        self.source_token_limit = source_token_limit
+        self.interval = max(0, config.log_interval_seconds)
+        self.start_time = time.time()
+        self.last_time = self.start_time
+        self.last_source_tokens = initial_source_tokens
+        self.last_processed = state.processed_samples.get(source_name, 0)
+        self.last_rejected = sum(state.rejected_counts.values())
+        self.last_dedup = state.deduplicated_count
+
+    def maybe_log(self, *, force: bool = False) -> None:
+        if self.interval == 0 and not force:
+            return
+        now = time.time()
+        elapsed = now - self.last_time
+        if not force and elapsed < self.interval:
+            return
+
+        source_tokens = self.state.source_tokens.get(self.source_name, 0)
+        processed = self.state.processed_samples.get(self.source_name, 0)
+        rejected = sum(self.state.rejected_counts.values())
+        dedup = self.state.deduplicated_count
+        total_tokens = self.total_tokens()
+
+        token_delta = source_tokens - self.last_source_tokens
+        processed_delta = processed - self.last_processed
+        rejected_delta = rejected - self.last_rejected
+        dedup_delta = dedup - self.last_dedup
+
+        log_progress(
+            f"source={self.source_name} progress mode={self.mode} "
+            f"source_tokens={format_count(source_tokens)}/{format_count(self.source_token_limit)}"
+            f"({format_pct(source_tokens, self.source_token_limit)}) "
+            f"total_tokens={format_count(total_tokens)}/{format_count(self.config.target_tokens)}"
+            f"({format_pct(total_tokens, self.config.target_tokens)}) "
+            f"processed={format_count(processed)} "
+            f"rate={format_rate(token_delta, elapsed, 'tok/s')} rows={format_rate(processed_delta, elapsed, 'row/s')} "
+            f"rejected={format_count(rejected)}(+{format_count(rejected_delta)}) "
+            f"dedup={format_count(dedup)}(+{format_count(dedup_delta)}) "
+            f"elapsed={format_duration(now - self.start_time)}"
+        )
+
+        self.last_time = now
+        self.last_source_tokens = source_tokens
+        self.last_processed = processed
+        self.last_rejected = rejected
+        self.last_dedup = dedup
+
+    def total_tokens(self) -> int:
+        if self.mode == "sft":
+            return self.state.sft_stats.total_tokens
+        return self.state.actual_tokens
+
+
+def format_count(value: int | float) -> str:
+    number = float(value)
+    sign = "-" if number < 0 else ""
+    number = abs(number)
+    for suffix, scale in [("B", 1_000_000_000), ("M", 1_000_000), ("k", 1_000)]:
+        if number >= scale:
+            return f"{sign}{number / scale:.1f}{suffix}"
+    return f"{sign}{int(number)}"
+
+
+def format_rate(delta: int | float, elapsed: float, unit: str) -> str:
+    if elapsed <= 0:
+        return f"0 {unit}"
+    return f"{format_count(delta / elapsed)} {unit}"
+
+
+def format_pct(value: int | float, total: int | float) -> str:
+    if total <= 0:
+        return "0.0%"
+    return f"{(value / total) * 100:.2f}%"
+
+
+def format_duration(seconds: float) -> str:
+    total = max(0, int(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
 
 
 def run_sft_jsonl_pipeline(
@@ -400,9 +776,18 @@ def process_sft_source(
     cursor_rows = iter_source_rows(config, source, state, stream)
     accepted_tokens = state.source_tokens.get(source.name, 0)
     sample_count = 0
+    progress_logger = SourceProgressLogger(
+        config,
+        source.name,
+        state,
+        mode="sft",
+        source_token_limit=token_limit,
+        initial_source_tokens=accepted_tokens,
+    )
     log_progress(
-        f"source={source.name} start processed_offset={state.processed_samples.get(source.name, 0)} "
-        f"target_tokens={token_limit}"
+        f"source={source.name} start mode=sft processed_offset={state.processed_samples.get(source.name, 0)} "
+        f"source_target_tokens={format_count(token_limit)} total_target_tokens={format_count(config.target_tokens)} "
+        f"log_interval={config.log_interval_seconds}s"
     )
     for file_index, next_row_offset, row in cursor_rows:
         if max_samples is not None and sample_count >= max_samples:
@@ -419,24 +804,29 @@ def process_sft_source(
         record = normalize_row(source, row)
         if record is None or record.get("type") != "instruct":
             increment(state.rejected_counts, "normalize_failed")
+            progress_logger.maybe_log()
             continue
         filter_result = should_keep(record)
         if not filter_result.keep:
             increment(state.rejected_counts, filter_result.reason or "filtered")
+            progress_logger.maybe_log()
             continue
         if deduper.is_duplicate(record):
             state.deduplicated_count += 1
+            progress_logger.maybe_log()
             continue
 
         token_count = len(tokenizer.encode_with_eos(render_training_text(record)))
         if token_count <= 1:
             increment(state.rejected_counts, "empty_tokens")
+            progress_logger.maybe_log()
             continue
 
         writer.add_record(sft_public_record(record), token_count)
         state.sft_stats = writer.stats
         accepted_tokens += token_count
         state.source_tokens[source.name] = accepted_tokens
+        progress_logger.maybe_log()
 
         if (
             state.sft_stats.total_tokens
@@ -460,6 +850,7 @@ def process_sft_source(
             write_partial_artifacts(config, state)
             upload_checkpoint(config)
 
+    progress_logger.maybe_log(force=True)
     return {
         "name": source.name,
         "type": source.type,

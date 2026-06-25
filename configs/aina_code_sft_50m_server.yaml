@@ -18,31 +18,14 @@ s3_output: s3://aina-code-datasets/v1/sft/aina-code-50m-instruct-v1/
 checkpoint_interval_tokens: 1000000
 s3_upload_interval_tokens: 1000000
 sft_samples_per_shard: 10000
+log_interval_seconds: 60
 
 sources:
-  - name: opencodeinstruct
+  - name: mbpp
     type: instruct
     mix_role: instruct_only
-    hf_id: nvidia/OpenCodeInstruct
-    target_tokens: 6500000
-
-  - name: code_feedback
-    type: instruct
-    mix_role: instruct_only
-    hf_id: HuggingFaceH4/Code-Feedback
-    target_tokens: 1500000
-
-  - name: magicoder_oss
-    type: instruct
-    mix_role: instruct_only
-    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
-    target_tokens: 1000000
-
-  - name: magicoder_evol
-    type: instruct
-    mix_role: instruct_only
-    hf_id: ise-uiuc/Magicoder-Evol-Instruct-110K
-    target_tokens: 700000
+    hf_id: google-research-datasets/mbpp
+    target_tokens: 100000
 
   - name: taco
     type: instruct
@@ -50,9 +33,26 @@ sources:
     hf_id: BAAI/TACO
     target_tokens: 200000
 
-  - name: mbpp
+  - name: magicoder_evol
     type: instruct
     mix_role: instruct_only
-    hf_id: google-research-datasets/mbpp
-    target_tokens: 100000
+    hf_id: ise-uiuc/Magicoder-Evol-Instruct-110K
+    target_tokens: 700000
 
+  - name: magicoder_oss
+    type: instruct
+    mix_role: instruct_only
+    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
+    target_tokens: 1000000
+
+  - name: code_feedback
+    type: instruct
+    mix_role: instruct_only
+    hf_id: HuggingFaceH4/Code-Feedback
+    target_tokens: 1500000
+
+  - name: opencodeinstruct
+    type: instruct
+    mix_role: instruct_only
+    hf_id: nvidia/OpenCodeInstruct
+    target_tokens: 6500000

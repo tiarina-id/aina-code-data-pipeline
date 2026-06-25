@@ -53,6 +53,9 @@ class PipelineConfig:
     shard_sequences: int = 100_000
     sft_samples_per_shard: int = 10_000
     write_intermediate_jsonl: bool = True
+    num_workers: int = 1
+    worker_batch_size: int = 32
+    log_interval_seconds: int = 60
 
     @property
     def sample_length(self) -> int:
@@ -83,6 +86,9 @@ class PipelineConfig:
         work_dir: str | None = None,
         progress_path: str | None = None,
         report_path: str | None = None,
+        num_workers: int | None = None,
+        worker_batch_size: int | None = None,
+        log_interval_seconds: int | None = None,
     ) -> "PipelineConfig":
         return dataclasses.replace(
             self,
@@ -92,6 +98,9 @@ class PipelineConfig:
             work_dir=work_dir if work_dir is not None else self.work_dir,
             progress_path=progress_path if progress_path is not None else self.progress_path,
             report_path=report_path if report_path is not None else self.report_path,
+            num_workers=num_workers if num_workers is not None else self.num_workers,
+            worker_batch_size=worker_batch_size if worker_batch_size is not None else self.worker_batch_size,
+            log_interval_seconds=log_interval_seconds if log_interval_seconds is not None else self.log_interval_seconds,
         )
 
 
@@ -109,6 +118,9 @@ def config_hash(config: PipelineConfig) -> str:
         "s3_upload_interval_tokens",
         "s3_output",
         "write_intermediate_jsonl",
+        "num_workers",
+        "worker_batch_size",
+        "log_interval_seconds",
     ]:
         payload.pop(operational_key, None)
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")

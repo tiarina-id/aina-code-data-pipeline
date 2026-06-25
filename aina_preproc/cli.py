@@ -15,6 +15,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--progress-path", default=None, help="Override progress checkpoint path.")
     parser.add_argument("--report-path", default=None, help="Override dataset report path.")
     parser.add_argument("--sequence-length", type=int, default=None, help="Override packed sequence length.")
+    parser.add_argument("--num-workers", type=int, default=None, help="Parallel workers for pretrain transform/tokenize.")
+    parser.add_argument("--worker-batch-size", type=int, default=None, help="Rows per worker task for pretrain.")
+    parser.add_argument("--log-interval-seconds", type=int, default=None, help="Seconds between progress log lines.")
     parser.add_argument("--skip-upload", action="store_true", help="Do not upload final output to S3.")
     parser.add_argument("--resume", dest="resume", action="store_true", default=True, help="Resume from progress file.")
     parser.add_argument("--no-resume", dest="resume", action="store_false", help="Start a fresh run.")
@@ -36,6 +39,9 @@ def main(argv: list[str] | None = None) -> int:
         work_dir=args.work_dir,
         progress_path=args.progress_path,
         report_path=args.report_path,
+        num_workers=args.num_workers,
+        worker_batch_size=args.worker_batch_size,
+        log_interval_seconds=args.log_interval_seconds,
     )
     run_pipeline(
         config,

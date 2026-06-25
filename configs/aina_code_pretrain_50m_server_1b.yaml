@@ -22,25 +22,38 @@ mixed_instruct_ratio: 0.03
 checkpoint_interval_tokens: 10000000
 s3_upload_interval_tokens: 10000000
 shard_sequences: 65536
+log_interval_seconds: 60
 
 sources:
-  - name: stack_v2
-    type: base
-    mix_role: base
-    hf_id: bigcode/the-stack-v2
-    target_tokens: 500000000
+  - name: mbpp
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: google-research-datasets/mbpp
+    target_tokens: 3000000
 
-  - name: github_code_clean
-    type: base
-    mix_role: base
-    hf_id: codeparrot/github-code-clean
-    target_tokens: 250000000
+  - name: code_feedback
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: HuggingFaceH4/Code-Feedback
+    target_tokens: 5000000
 
-  - name: code_search_net
-    type: base
-    mix_role: base
-    hf_id: claudios/code_search_net
-    target_tokens: 120000000
+  - name: taco
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: BAAI/TACO
+    target_tokens: 6000000
+
+  - name: magicoder_evol
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: ise-uiuc/Magicoder-Evol-Instruct-110K
+    target_tokens: 7000000
+
+  - name: magicoder_oss
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
+    target_tokens: 9000000
 
   - name: starcoderdata
     type: base
@@ -54,33 +67,20 @@ sources:
     hf_id: HuggingFaceFW/fineweb-edu
     target_tokens: 50000000
 
-  - name: magicoder_oss
-    type: instruct
-    mix_role: mixed_instruct
-    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
-    target_tokens: 9000000
+  - name: code_search_net
+    type: base
+    mix_role: base
+    hf_id: claudios/code_search_net
+    target_tokens: 120000000
 
-  - name: magicoder_evol
-    type: instruct
-    mix_role: mixed_instruct
-    hf_id: ise-uiuc/Magicoder-Evol-Instruct-110K
-    target_tokens: 7000000
+  - name: github_code_clean
+    type: base
+    mix_role: base
+    hf_id: codeparrot/github-code-clean
+    target_tokens: 250000000
 
-  - name: taco
-    type: instruct
-    mix_role: mixed_instruct
-    hf_id: BAAI/TACO
-    target_tokens: 6000000
-
-  - name: code_feedback
-    type: instruct
-    mix_role: mixed_instruct
-    hf_id: HuggingFaceH4/Code-Feedback
-    target_tokens: 5000000
-
-  - name: mbpp
-    type: instruct
-    mix_role: mixed_instruct
-    hf_id: google-research-datasets/mbpp
-    target_tokens: 3000000
-
+  - name: stack_v2
+    type: base
+    mix_role: base
+    hf_id: bigcode/the-stack-v2
+    target_tokens: 500000000

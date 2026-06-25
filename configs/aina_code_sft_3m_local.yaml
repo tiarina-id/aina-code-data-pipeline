@@ -20,24 +20,6 @@ s3_upload_interval_tokens: 100000
 sft_samples_per_shard: 10000
 
 sources:
-  - name: opencodeinstruct
-    type: instruct
-    mix_role: instruct_only
-    hf_id: nvidia/OpenCodeInstruct
-    target_tokens: 180000
-
-  - name: code_feedback
-    type: instruct
-    mix_role: instruct_only
-    hf_id: HuggingFaceH4/Code-Feedback
-    target_tokens: 50000
-
-  - name: magicoder_oss
-    type: instruct
-    mix_role: instruct_only
-    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
-    target_tokens: 30000
-
   - name: magicoder_evol
     type: instruct
     mix_role: instruct_only
@@ -50,3 +32,20 @@ sources:
     hf_id: google-research-datasets/mbpp
     target_tokens: 20000
 
+  - name: magicoder_oss
+    type: instruct
+    mix_role: instruct_only
+    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
+    target_tokens: 30000
+
+  - name: code_feedback
+    type: instruct
+    mix_role: instruct_only
+    hf_id: HuggingFaceH4/Code-Feedback
+    target_tokens: 50000
+
+  - name: opencodeinstruct
+    type: instruct
+    mix_role: instruct_only
+    hf_id: nvidia/OpenCodeInstruct
+    target_tokens: 180000

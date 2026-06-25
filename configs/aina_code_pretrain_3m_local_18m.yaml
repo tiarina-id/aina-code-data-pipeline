@@ -24,30 +24,11 @@ s3_upload_interval_tokens: 1000000
 shard_sequences: 4096
 
 sources:
-  - name: github_code_clean
-    type: base
-    mix_role: base
-    hf_id: codeparrot/github-code-clean
-    data_file_limit: 16
-    target_tokens: 12000000
-
-  - name: code_search_net
-    type: base
-    mix_role: base
-    hf_id: claudios/code_search_net
-    target_tokens: 4000000
-
-  - name: fineweb_edu
-    type: base
-    mix_role: base
-    hf_id: HuggingFaceFW/fineweb-edu
-    target_tokens: 1460000
-
-  - name: magicoder_oss
+  - name: mbpp
     type: instruct
     mix_role: mixed_instruct
-    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
-    target_tokens: 180000
+    hf_id: google-research-datasets/mbpp
+    target_tokens: 100000
 
   - name: magicoder_evol
     type: instruct
@@ -61,9 +42,27 @@ sources:
     hf_id: BAAI/TACO
     target_tokens: 140000
 
-  - name: mbpp
+  - name: magicoder_oss
     type: instruct
     mix_role: mixed_instruct
-    hf_id: google-research-datasets/mbpp
-    target_tokens: 100000
+    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
+    target_tokens: 180000
 
+  - name: fineweb_edu
+    type: base
+    mix_role: base
+    hf_id: HuggingFaceFW/fineweb-edu
+    target_tokens: 1460000
+
+  - name: code_search_net
+    type: base
+    mix_role: base
+    hf_id: claudios/code_search_net
+    target_tokens: 4000000
+
+  - name: github_code_clean
+    type: base
+    mix_role: base
+    hf_id: codeparrot/github-code-clean
+    data_file_limit: 16
+    target_tokens: 12000000
