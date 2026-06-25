@@ -1,27 +1,27 @@
-project_name: aina-code-500m
+project_name: aina-code-500m-8k
 output_mode: pretrain
 artifact_format: tokenized_binary_shards
 target_tokens: 10000000000
-sequence_length: 2048
-tokens_per_sample: 2048
+sequence_length: 8192
+tokens_per_sample: 8192
 loss_shift: model_internal
 val_ratio: 0.001
 seed: 42
 
 tokenizer_path: /data/aina-tokenizer
 fallback_tokenizer: gpt2
-output_dir: /data/aina-dataset/pretrain/aina-code-500m-10b
-work_dir: /data/aina-dataset/work/pretrain-500m-10b
-progress_path: /data/aina-dataset/work/pretrain-500m-10b/progress.json
-report_path: /data/aina-dataset/work/pretrain-500m-10b/reports/dataset_report.json
+output_dir: /data/aina-dataset/pretrain/aina-code-500m-10b-8k
+work_dir: /data/aina-dataset/work/pretrain-500m-10b-8k
+progress_path: /data/aina-dataset/work/pretrain-500m-10b-8k/progress.json
+report_path: /data/aina-dataset/work/pretrain-500m-10b-8k/reports/dataset_report.json
 
-s3_output: s3://aina-code-datasets/v1/pretrain/aina-code-500m-10b/
+s3_output: s3://aina-code-datasets/v1/pretrain/aina-code-500m-10b-8k/
 
 base_ratio: 0.97
 mixed_instruct_ratio: 0.03
 checkpoint_interval_tokens: 50000000
 s3_upload_interval_tokens: 50000000
-shard_sequences: 65536
+shard_sequences: 16384
 write_intermediate_jsonl: false
 num_workers: 24
 worker_batch_size: 32
