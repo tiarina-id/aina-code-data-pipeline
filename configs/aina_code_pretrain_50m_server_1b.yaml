@@ -56,32 +56,26 @@ sources:
     hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
     target_tokens: 9000000
 
-  - name: starcoderdata
-    type: base
-    mix_role: base
-    hf_id: bigcode/starcoderdata
-    target_tokens: 50000000
-
   - name: fineweb_edu
     type: base
     mix_role: base
     hf_id: HuggingFaceFW/fineweb-edu
-    target_tokens: 50000000
+    target_tokens: 70000000
+
+  - name: starcoderdata
+    type: base
+    mix_role: base
+    hf_id: bigcode/starcoderdata
+    target_tokens: 200000000
 
   - name: code_search_net
     type: base
     mix_role: base
     hf_id: claudios/code_search_net
-    target_tokens: 120000000
+    target_tokens: 200000000
 
   - name: github_code_clean
     type: base
     mix_role: base
     hf_id: codeparrot/github-code-clean
-    target_tokens: 250000000
-
-  - name: stack_v2
-    type: base
-    mix_role: base
-    hf_id: bigcode/the-stack-v2
     target_tokens: 500000000

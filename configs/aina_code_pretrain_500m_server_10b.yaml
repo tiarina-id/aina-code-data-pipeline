@@ -63,28 +63,22 @@ sources:
     type: base
     mix_role: base
     hf_id: HuggingFaceFW/fineweb-edu
-    target_tokens: 300000000
+    target_tokens: 500000000
 
   - name: code_search_net
     type: base
     mix_role: base
     hf_id: claudios/code_search_net
-    target_tokens: 400000000
-
-  - name: starcoderdata
-    type: base
-    mix_role: base
-    hf_id: bigcode/starcoderdata
-    target_tokens: 800000000
+    target_tokens: 700000000
 
   - name: github_code_clean
     type: base
     mix_role: base
     hf_id: codeparrot/github-code-clean
-    target_tokens: 1200000000
+    target_tokens: 3000000000
 
-  - name: stack_v2
+  - name: starcoderdata
     type: base
     mix_role: base
-    hf_id: bigcode/the-stack-v2
-    target_tokens: 7000000000
+    hf_id: bigcode/starcoderdata
+    target_tokens: 5500000000

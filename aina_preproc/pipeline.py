@@ -240,6 +240,17 @@ def process_source(
         f"source_target_tokens={format_count(token_limit)} total_target_tokens={format_count(config.target_tokens)} "
         f"workers={max(1, config.num_workers)} log_interval={config.log_interval_seconds}s"
     )
+    if accepted_tokens >= token_limit:
+        progress_logger.maybe_log(force=True)
+        return {
+            "name": source.name,
+            "type": source.type,
+            "processed_samples": state.processed_samples.get(source.name, 0),
+            "accepted_tokens": state.source_tokens.get(source.name, 0),
+            "normalized_count": state.normalized_counts.get(source.name, 0),
+            "filtered_count": state.filtered_counts.get(source.name, 0),
+        }
+
     if config.num_workers > 1:
         process_pretrain_source_parallel(
             config,
