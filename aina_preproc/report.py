@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
+import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -89,5 +92,62 @@ def write_dataset_report(
     return report
 
 
+_PROGRESS_ACTIVE = False
+_PROGRESS_WIDTH = 0
+
+
 def log_progress(message: str) -> None:
+    clear_progress_line()
     print(message, flush=True)
+
+
+def emit_progress_line(message: str) -> None:
+    global _PROGRESS_ACTIVE, _PROGRESS_WIDTH
+    if not sys.stdout.isatty():
+        print(message, flush=True)
+        return
+    line = fit_terminal(message)
+    padding = " " * max(0, _PROGRESS_WIDTH - len(line))
+    sys.stdout.write(f"\r{line}{padding}")
+    sys.stdout.flush()
+    _PROGRESS_ACTIVE = True
+    _PROGRESS_WIDTH = len(line)
+
+
+def clear_progress_line() -> None:
+    global _PROGRESS_ACTIVE, _PROGRESS_WIDTH
+    if not sys.stdout.isatty() or not _PROGRESS_ACTIVE:
+        return
+    sys.stdout.write("\r" + (" " * _PROGRESS_WIDTH) + "\r")
+    sys.stdout.flush()
+    _PROGRESS_ACTIVE = False
+    _PROGRESS_WIDTH = 0
+
+
+def progress_bar(value: int | float, total: int | float, *, width: int = 24) -> str:
+    if total <= 0:
+        return "[------------------------]   0.0%"
+    ratio = min(1.0, max(0.0, float(value) / float(total)))
+    filled = int(round(width * ratio))
+    return f"[{'#' * filled}{'-' * (width - filled)}] {ratio * 100:5.1f}%"
+
+
+def fit_terminal(line: str) -> str:
+    columns = shutil.get_terminal_size((120, 20)).columns
+    max_width = max(40, columns - 1)
+    if len(line) <= max_width:
+        return line
+    return line[: max_width - 3] + "..."
+
+
+def format_duration(seconds: float | None) -> str:
+    if seconds is None or not math.isfinite(seconds) or seconds < 0:
+        return "n/a"
+    total = int(seconds)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"

@@ -24,7 +24,14 @@ from .progress import (
     truncate_file,
     truncate_jsonl_files,
 )
-from .report import log_progress, write_dataset_report, write_metadata
+from .report import (
+    emit_progress_line,
+    format_duration as format_elapsed,
+    log_progress,
+    progress_bar,
+    write_dataset_report,
+    write_metadata,
+)
 from .sft import SftJsonlShardWriter
 from .tokenize import copy_tokenizer_artifacts, load_tokenizer
 from .upload_s3 import download_files, download_prefix, get_json, put_json, upload_directory, upload_files
@@ -89,6 +96,11 @@ def run_pretrain_pipeline(
     if config.num_workers > 1:
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     tokenizer = load_tokenizer(config.tokenizer_path, config.fallback_tokenizer)
+    log_progress(
+        f"[preproc:setup] project={config.project_name} mode=pretrain target={format_count(config.target_tokens)} "
+        f"seq_len={config.sequence_length} sample_len={config.sample_length} workers={max(1, config.num_workers)} "
+        f"output={config.output_dir}"
+    )
     source_reports: list[dict[str, Any]] = []
     dedup_path = Path(config.work_dir) / "dedup" / "exact_hashes.sqlite"
     next_checkpoint = state.actual_tokens + config.checkpoint_interval_tokens
@@ -182,9 +194,9 @@ def run_pretrain_pipeline(
         uploaded = upload_packed_outputs(config, state)
 
     log_progress(
-        "finished "
-        f"tokens={state.actual_tokens} train={state.pack_stats.train_tokens} val={state.pack_stats.val_tokens} "
-        f"output={config.output_dir}"
+        "[preproc:done] "
+        f"tokens={format_count(state.actual_tokens)} train={format_count(state.pack_stats.train_tokens)} "
+        f"val={format_count(state.pack_stats.val_tokens)} output={config.output_dir}"
     )
     return {"metadata": metadata, "report": report, "uploaded": uploaded}
 
@@ -664,6 +676,7 @@ class SourceProgressLogger:
         self.start_time = time.time()
         self.last_time = self.start_time
         self.last_source_tokens = initial_source_tokens
+        self.initial_total_tokens = self.total_tokens()
         self.last_processed = state.processed_samples.get(source_name, 0)
         self.last_rejected = sum(state.rejected_counts.values())
         self.last_dedup = state.deduplicated_count
@@ -686,18 +699,21 @@ class SourceProgressLogger:
         processed_delta = processed - self.last_processed
         rejected_delta = rejected - self.last_rejected
         dedup_delta = dedup - self.last_dedup
+        total_elapsed = now - self.start_time
+        total_delta = total_tokens - self.initial_total_tokens
+        average_tps = total_delta / total_elapsed if total_elapsed > 0 else 0.0
+        remaining_tokens = max(0, self.config.target_tokens - total_tokens)
+        eta = remaining_tokens / average_tps if average_tps > 0 else None
 
-        log_progress(
-            f"source={self.source_name} progress mode={self.mode} "
-            f"source_tokens={format_count(source_tokens)}/{format_count(self.source_token_limit)}"
-            f"({format_pct(source_tokens, self.source_token_limit)}) "
-            f"total_tokens={format_count(total_tokens)}/{format_count(self.config.target_tokens)}"
-            f"({format_pct(total_tokens, self.config.target_tokens)}) "
-            f"processed={format_count(processed)} "
+        emit_progress_line(
+            f"[preproc] {progress_bar(total_tokens, self.config.target_tokens)} "
+            f"mode={self.mode} source={self.source_name} "
+            f"total={format_count(total_tokens)}/{format_count(self.config.target_tokens)} "
+            f"source={format_count(source_tokens)}/{format_count(self.source_token_limit)} "
             f"rate={format_rate(token_delta, elapsed, 'tok/s')} rows={format_rate(processed_delta, elapsed, 'row/s')} "
-            f"rejected={format_count(rejected)}(+{format_count(rejected_delta)}) "
+            f"processed={format_count(processed)} rejected={format_count(rejected)}(+{format_count(rejected_delta)}) "
             f"dedup={format_count(dedup)}(+{format_count(dedup_delta)}) "
-            f"elapsed={format_duration(now - self.start_time)}"
+            f"elapsed={format_elapsed(total_elapsed)} eta={format_elapsed(eta)}"
         )
 
         self.last_time = now
@@ -734,17 +750,6 @@ def format_pct(value: int | float, total: int | float) -> str:
     return f"{(value / total) * 100:.2f}%"
 
 
-def format_duration(seconds: float) -> str:
-    total = max(0, int(seconds))
-    hours, remainder = divmod(total, 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours}h{minutes:02d}m{secs:02d}s"
-    if minutes:
-        return f"{minutes}m{secs:02d}s"
-    return f"{secs}s"
-
-
 def run_sft_jsonl_pipeline(
     config: PipelineConfig,
     *,
@@ -772,6 +777,10 @@ def run_sft_jsonl_pipeline(
     if config.num_workers > 1:
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     tokenizer = load_tokenizer(config.tokenizer_path, config.fallback_tokenizer)
+    log_progress(
+        f"[preproc:setup] project={config.project_name} mode=sft target={format_count(config.target_tokens)} "
+        f"seq_len={config.sequence_length} workers={max(1, config.num_workers)} output={config.output_dir}"
+    )
     dedup_path = Path(config.work_dir) / "dedup" / "exact_hashes.sqlite"
     source_reports: list[dict[str, Any]] = []
 
@@ -826,8 +835,8 @@ def run_sft_jsonl_pipeline(
         uploaded = upload_packed_outputs(config, state)
 
     log_progress(
-        "finished "
-        f"sft_tokens={state.sft_stats.total_tokens} samples={state.sft_stats.total_samples} "
+        "[preproc:done] "
+        f"sft_tokens={format_count(state.sft_stats.total_tokens)} samples={format_count(state.sft_stats.total_samples)} "
         f"output={config.output_dir}"
     )
     return {"metadata": metadata, "report": report, "uploaded": uploaded}
