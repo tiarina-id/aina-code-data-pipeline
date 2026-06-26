@@ -56,6 +56,68 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
+## VM Setup
+
+Syarat awal:
+
+- Pasang IAM role ke EC2 yang punya akses S3 bucket `aina-code`.
+- Pastikan repo ini sudah berisi `setup.sh`.
+- `AINA_AUTO_CONFIRM=1` akan format disk kosong yang terdeteksi untuk `/data`.
+
+Clone repo dan jalankan setup:
+
+```bash
+cd ~
+git clone https://github.com/tiarina-id/aina-code-data-pipeline.git preproc-pipeline
+cd ~/preproc-pipeline
+
+SWAP_GB=8 AINA_AUTO_CONFIRM=1 bash setup.sh
+```
+
+Setelah setup selesai:
+
+```bash
+source ~/.bashrc
+export HF_TOKEN="hf_xxx"
+export AWS_DEFAULT_REGION=ap-southeast-3
+
+aws sts get-caller-identity
+aws s3 ls s3://aina-code
+
+sudo apt-get install -y tmux jq
+deactivate 2>/dev/null || true
+tmux new -s preproc
+
+source .venv/bin/activate
+```
+
+Mini test 3M 1K:
+
+```bash
+python scripts/build_dataset.py \
+  --config configs/aina_code_3m_1k_pretrain.yaml \
+  --resume \
+  --num-workers 6 \
+  --worker-batch-size 32
+
+python scripts/build_dataset.py \
+  --config configs/aina_code_3m_1k_sft.yaml \
+  --resume \
+  --num-workers 6 \
+  --worker-batch-size 32
+
+aws s3 ls s3://aina-code/v1/datasets/aina-1-code-3m-1k/ --recursive --summarize
+```
+
+Opsional hapus checkpoint dataset setelah final output aman:
+
+```bash
+aws s3 rm s3://aina-code/v1/datasets/aina-1-code-3m-1k/pretrain/checkpoint/ --recursive
+aws s3 rm s3://aina-code/v1/datasets/aina-1-code-3m-1k/sft/checkpoint/ --recursive
+aws s3 rm s3://aina-code/v1/datasets/aina-1-code-3m-1k/pretrain/metadata.partial.json
+aws s3 rm s3://aina-code/v1/datasets/aina-1-code-3m-1k/sft/metadata.partial.json
+```
+
 ## Environment
 
 ```bash
