@@ -18,6 +18,9 @@ s3_output: s3://aina-code-datasets/v1/sft/aina-code-50m-instruct-v1/
 checkpoint_interval_tokens: 1000000
 s3_upload_interval_tokens: 1000000
 sft_samples_per_shard: 10000
+num_workers: 8
+worker_batch_size: 32
+worker_start_method: fork
 log_interval_seconds: 60
 
 sources:

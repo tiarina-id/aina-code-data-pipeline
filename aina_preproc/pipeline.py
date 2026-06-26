@@ -31,6 +31,8 @@ from .upload_s3 import download_files, download_prefix, get_json, put_json, uplo
 
 _PRETRAIN_WORKER_SOURCE: SourceConfig | None = None
 _PRETRAIN_WORKER_TOKENIZER: Any | None = None
+_SFT_WORKER_SOURCE: SourceConfig | None = None
+_SFT_WORKER_TOKENIZER: Any | None = None
 
 
 def run_pipeline(
@@ -558,6 +560,17 @@ def init_pretrain_worker(
     _PRETRAIN_WORKER_TOKENIZER = load_tokenizer(tokenizer_path, fallback_tokenizer)
 
 
+def init_sft_worker(
+    source: SourceConfig,
+    tokenizer_path: str,
+    fallback_tokenizer: str | None,
+) -> None:
+    global _SFT_WORKER_SOURCE, _SFT_WORKER_TOKENIZER
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    _SFT_WORKER_SOURCE = source
+    _SFT_WORKER_TOKENIZER = load_tokenizer(tokenizer_path, fallback_tokenizer)
+
+
 def pretrain_worker_mp_context(start_method: str) -> mp.context.BaseContext:
     available = mp.get_all_start_methods()
     if start_method not in available:
@@ -595,6 +608,38 @@ def transform_pretrain_batch(batch: list[CursorRow]) -> list[dict[str, Any]]:
             result["reject_reason"] = "empty_tokens"
         else:
             result["tokens"] = tokens
+        results.append(result)
+    return results
+
+
+def transform_sft_batch(batch: list[CursorRow]) -> list[dict[str, Any]]:
+    if _SFT_WORKER_SOURCE is None or _SFT_WORKER_TOKENIZER is None:
+        raise RuntimeError("SFT worker was not initialized.")
+
+    results: list[dict[str, Any]] = []
+    for file_index, next_row_offset, row in batch:
+        result: dict[str, Any] = {
+            "file_index": file_index,
+            "next_row_offset": next_row_offset,
+        }
+        record = normalize_row(_SFT_WORKER_SOURCE, row)
+        if record is None or record.get("type") != "instruct":
+            result["reject_reason"] = "normalize_failed"
+            results.append(result)
+            continue
+
+        result["record"] = record
+        filter_result = should_keep(record)
+        if not filter_result.keep:
+            result["reject_reason"] = filter_result.reason or "filtered"
+            results.append(result)
+            continue
+
+        token_count = len(_SFT_WORKER_TOKENIZER.encode_with_eos(render_training_text(record)))
+        if token_count <= 1:
+            result["reject_reason"] = "empty_tokens"
+        else:
+            result["token_count"] = token_count
         results.append(result)
     return results
 
@@ -724,6 +769,8 @@ def run_sft_jsonl_pipeline(
     elif resume:
         restore_outputs_to_checkpoint(config, state)
 
+    if config.num_workers > 1:
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     tokenizer = load_tokenizer(config.tokenizer_path, config.fallback_tokenizer)
     dedup_path = Path(config.work_dir) / "dedup" / "exact_hashes.sqlite"
     source_reports: list[dict[str, Any]] = []
@@ -813,8 +860,33 @@ def process_sft_source(
     log_progress(
         f"source={source.name} start mode=sft processed_offset={state.processed_samples.get(source.name, 0)} "
         f"source_target_tokens={format_count(token_limit)} total_target_tokens={format_count(config.target_tokens)} "
-        f"log_interval={config.log_interval_seconds}s"
+        f"workers={max(1, config.num_workers)} log_interval={config.log_interval_seconds}s"
     )
+    if config.num_workers > 1:
+        process_sft_source_parallel(
+            config,
+            source,
+            state,
+            deduper,
+            writer,
+            cursor_rows,
+            accepted_tokens=accepted_tokens,
+            token_limit=token_limit,
+            max_samples=max_samples,
+            upload_enabled=upload_enabled,
+            progress_logger=progress_logger,
+        )
+        progress_logger.maybe_log(force=True)
+        return {
+            "name": source.name,
+            "type": source.type,
+            "mix_role": source.mix_role,
+            "processed_samples": state.processed_samples.get(source.name, 0),
+            "accepted_tokens": state.source_tokens.get(source.name, 0),
+            "normalized_count": state.normalized_counts.get(source.name, 0),
+            "filtered_count": state.filtered_counts.get(source.name, 0),
+        }
+
     for file_index, next_row_offset, row in cursor_rows:
         if max_samples is not None and sample_count >= max_samples:
             break
@@ -886,6 +958,146 @@ def process_sft_source(
         "normalized_count": state.normalized_counts.get(source.name, 0),
         "filtered_count": state.filtered_counts.get(source.name, 0),
     }
+
+
+def process_sft_source_parallel(
+    config: PipelineConfig,
+    source: SourceConfig,
+    state: ProgressState,
+    deduper: ExactDeduper,
+    writer: SftJsonlShardWriter,
+    cursor_rows: Iterable[CursorRow],
+    *,
+    accepted_tokens: int,
+    token_limit: int,
+    max_samples: int | None,
+    upload_enabled: bool,
+    progress_logger: "SourceProgressLogger",
+) -> None:
+    workers = max(1, config.num_workers)
+    batch_size = max(1, config.worker_batch_size)
+    max_pending = workers * 2
+    rows = iter_limited_cursor_rows(cursor_rows, max_samples)
+    batches = iter_cursor_batches(rows, batch_size)
+    pending: deque[Future] = deque()
+    mp_context = pretrain_worker_mp_context(config.worker_start_method)
+    executor = ProcessPoolExecutor(
+        max_workers=workers,
+        mp_context=mp_context,
+        initializer=init_sft_worker,
+        initargs=(source, config.tokenizer_path, config.fallback_tokenizer),
+    )
+
+    log_progress(
+        f"source={source.name} sft_parallel_workers={workers} worker_batch_size={batch_size} "
+        f"worker_start_method={config.worker_start_method}"
+    )
+    try:
+        def submit_next() -> bool:
+            try:
+                batch = next(batches)
+            except StopIteration:
+                return False
+            pending.append(executor.submit(transform_sft_batch, batch))
+            return True
+
+        for _ in range(max_pending):
+            if not submit_next():
+                break
+
+        while pending:
+            future = pending.popleft()
+            batch_results = future.result()
+            for result in batch_results:
+                if accepted_tokens >= token_limit or state.sft_stats.total_tokens >= config.target_tokens:
+                    return
+                accepted_tokens = consume_sft_transform_result(
+                    config,
+                    source,
+                    state,
+                    deduper,
+                    writer,
+                    result,
+                    accepted_tokens=accepted_tokens,
+                    upload_enabled=upload_enabled,
+                    progress_logger=progress_logger,
+                )
+            submit_next()
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
+def consume_sft_transform_result(
+    config: PipelineConfig,
+    source: SourceConfig,
+    state: ProgressState,
+    deduper: ExactDeduper,
+    writer: SftJsonlShardWriter,
+    result: dict[str, Any],
+    *,
+    accepted_tokens: int,
+    upload_enabled: bool,
+    progress_logger: "SourceProgressLogger",
+) -> int:
+    file_index = result.get("file_index")
+    next_row_offset = result.get("next_row_offset")
+    state.processed_samples[source.name] = state.processed_samples.get(source.name, 0) + 1
+    if file_index is not None and next_row_offset is not None:
+        state.source_file_indices[source.name] = file_index
+        state.source_row_offsets[source.name] = next_row_offset
+
+    record = result.get("record")
+    reject_reason = result.get("reject_reason")
+    if record is None:
+        increment(state.rejected_counts, reject_reason or "normalize_failed")
+        progress_logger.maybe_log()
+        return accepted_tokens
+
+    if reject_reason:
+        increment(state.rejected_counts, reject_reason)
+        progress_logger.maybe_log()
+        return accepted_tokens
+
+    if deduper.is_duplicate(record):
+        state.deduplicated_count += 1
+        progress_logger.maybe_log()
+        return accepted_tokens
+
+    token_count = int(result.get("token_count") or 0)
+    if token_count <= 1:
+        increment(state.rejected_counts, "empty_tokens")
+        progress_logger.maybe_log()
+        return accepted_tokens
+
+    writer.add_record(sft_public_record(record), token_count)
+    state.sft_stats = writer.stats
+    accepted_tokens += token_count
+    state.source_tokens[source.name] = accepted_tokens
+    progress_logger.maybe_log()
+
+    if (
+        state.sft_stats.total_tokens
+        and state.sft_stats.total_tokens % config.checkpoint_interval_tokens < token_count
+    ):
+        writer.flush_handles()
+        update_sft_file_state(config, state)
+        save_progress(config.progress_path, state)
+        deduper.checkpoint()
+
+    if (
+        upload_enabled
+        and config.s3_upload_interval_tokens
+        and state.sft_stats.total_tokens
+        and state.sft_stats.total_tokens % config.s3_upload_interval_tokens < token_count
+    ):
+        writer.flush_handles()
+        update_sft_file_state(config, state)
+        save_progress(config.progress_path, state)
+        deduper.checkpoint()
+        write_partial_artifacts(config, state)
+        upload_checkpoint(config)
+
+    return accepted_tokens
 
 
 def iter_source_rows(
