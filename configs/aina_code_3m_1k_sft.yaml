@@ -1,25 +1,24 @@
-project_name: aina-code-50m-sft
+project_name: aina-1-code-3m-1k-sft
 output_mode: sft_jsonl
 artifact_format: jsonl_messages
-target_tokens: 10000000
-sequence_length: 2048
+target_tokens: 300000
+sequence_length: 1024
 val_ratio: 0.01
 seed: 42
 
-tokenizer_path: /data/aina-tokenizer
-fallback_tokenizer: gpt2
-output_dir: /data/aina-dataset/sft/aina-code-50m-instruct-v1
-work_dir: /data/aina-dataset/work/sft-50m
-progress_path: /data/aina-dataset/work/sft-50m/progress.json
-report_path: /data/aina-dataset/work/sft-50m/reports/dataset_report.json
+tokenizer_path: /data/aina-code/tokenizers/gpt2-8k-chat
+output_dir: /data/aina-code/datasets/aina-1-code-3m-1k/sft
+work_dir: /data/aina-code/work/aina-1-code-3m-1k/sft
+progress_path: /data/aina-code/work/aina-1-code-3m-1k/sft/progress.json
+report_path: /data/aina-code/work/aina-1-code-3m-1k/sft/reports/dataset_report.json
 
-s3_output: s3://aina-code-datasets/v1/sft/aina-code-50m-instruct-v1/
+s3_output: s3://aina-code/v1/datasets/aina-1-code-3m-1k/sft/
 
-checkpoint_interval_tokens: 1000000
-s3_upload_interval_tokens: 1000000
+checkpoint_interval_tokens: 100000
+s3_upload_interval_tokens: 100000
 sft_samples_per_shard: 10000
-num_workers: 8
-worker_batch_size: 32
+num_workers: 2
+worker_batch_size: 16
 worker_start_method: fork
 log_interval_seconds: 60
 
@@ -28,34 +27,34 @@ sources:
     type: instruct
     mix_role: instruct_only
     hf_id: google-research-datasets/mbpp
-    target_tokens: 100000
+    target_tokens: 3000
 
   - name: taco
     type: instruct
     mix_role: instruct_only
     hf_id: BAAI/TACO
-    target_tokens: 200000
+    target_tokens: 6000
 
   - name: magicoder_evol
     type: instruct
     mix_role: instruct_only
     hf_id: ise-uiuc/Magicoder-Evol-Instruct-110K
-    target_tokens: 700000
+    target_tokens: 21000
 
   - name: magicoder_oss
     type: instruct
     mix_role: instruct_only
     hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
-    target_tokens: 1000000
+    target_tokens: 30000
 
   - name: code_feedback
     type: instruct
     mix_role: instruct_only
     hf_id: HuggingFaceH4/Code-Feedback
-    target_tokens: 1500000
+    target_tokens: 45000
 
   - name: opencodeinstruct
     type: instruct
     mix_role: instruct_only
     hf_id: nvidia/OpenCodeInstruct
-    target_tokens: 6500000
+    target_tokens: 195000

@@ -1,0 +1,80 @@
+project_name: aina-1-code-50m-2k-pretrain
+output_mode: pretrain
+artifact_format: tokenized_binary_shards
+target_tokens: 1000000000
+sequence_length: 2048
+tokens_per_sample: 2048
+loss_shift: model_internal
+val_ratio: 0.001
+seed: 42
+
+tokenizer_path: /data/aina-code/tokenizers/gpt2-8k-chat
+output_dir: /data/aina-code/datasets/aina-1-code-50m-2k/pretrain
+work_dir: /data/aina-code/work/aina-1-code-50m-2k/pretrain
+progress_path: /data/aina-code/work/aina-1-code-50m-2k/pretrain/progress.json
+report_path: /data/aina-code/work/aina-1-code-50m-2k/pretrain/reports/dataset_report.json
+
+s3_output: s3://aina-code/v1/datasets/aina-1-code-50m-2k/pretrain/
+
+base_ratio: 0.97
+mixed_instruct_ratio: 0.03
+checkpoint_interval_tokens: 10000000
+s3_upload_interval_tokens: 10000000
+shard_sequences: 65536
+worker_start_method: fork
+log_interval_seconds: 60
+
+sources:
+  - name: mbpp
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: google-research-datasets/mbpp
+    target_tokens: 3000000
+
+  - name: code_feedback
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: HuggingFaceH4/Code-Feedback
+    target_tokens: 5000000
+
+  - name: taco
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: BAAI/TACO
+    target_tokens: 6000000
+
+  - name: magicoder_evol
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: ise-uiuc/Magicoder-Evol-Instruct-110K
+    target_tokens: 7000000
+
+  - name: magicoder_oss
+    type: instruct
+    mix_role: mixed_instruct
+    hf_id: ise-uiuc/Magicoder-OSS-Instruct-75K
+    target_tokens: 9000000
+
+  - name: fineweb_edu
+    type: base
+    mix_role: base
+    hf_id: HuggingFaceFW/fineweb-edu
+    target_tokens: 70000000
+
+  - name: starcoderdata
+    type: base
+    mix_role: base
+    hf_id: bigcode/starcoderdata
+    target_tokens: 200000000
+
+  - name: code_search_net
+    type: base
+    mix_role: base
+    hf_id: claudios/code_search_net
+    target_tokens: 200000000
+
+  - name: github_code_clean
+    type: base
+    mix_role: base
+    hf_id: codeparrot/github-code-clean
+    target_tokens: 500000000

@@ -41,8 +41,8 @@ class PipelineConfig:
     tokens_per_sample: int | None = None
     loss_shift: str = "model_internal"
     fallback_tokenizer: str | None = None
-    work_dir: str = "/data/aina-dataset"
-    progress_path: str = "/data/aina-dataset/progress.json"
+    work_dir: str = "/data/aina-code/work"
+    progress_path: str = "/data/aina-code/work/progress.json"
     report_path: str = "reports/dataset_report.json"
     s3_output: str | None = None
     base_ratio: float = 0.9

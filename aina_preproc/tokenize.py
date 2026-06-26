@@ -6,6 +6,12 @@ from pathlib import Path
 from typing import Protocol
 
 
+AINA_CHAT_TEMPLATE = """{% for message in messages %}<|{{ message['role'] }}|>
+{{ message['content'] }}
+{% endfor %}{% if add_generation_prompt %}<|assistant|>
+{% endif %}"""
+
+
 class TokenizerLike(Protocol):
     eos_token_id: int | None
     vocab_size: int
@@ -73,6 +79,12 @@ def load_tokenizer(tokenizer_path: str, fallback_tokenizer: str | None = None) -
             tokenizer.eos_token = tokenizer.pad_token
         else:
             raise ValueError("Tokenizer must define eos_token_id, sep_token, or pad_token.")
+    if getattr(tokenizer, "pad_token_id", None) is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    if not getattr(tokenizer, "chat_template", None):
+        tokenizer.chat_template = AINA_CHAT_TEMPLATE
+    if getattr(tokenizer, "model_max_length", 0) < 8192:
+        tokenizer.model_max_length = 8192
     return TokenizerBundle(tokenizer=tokenizer, source=source)
 
 

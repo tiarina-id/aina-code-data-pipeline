@@ -1,4 +1,4 @@
-project_name: aina-code-500m-8k-sft
+project_name: aina-1-code-0.5b-8k-sft
 output_mode: sft_jsonl
 artifact_format: jsonl_messages
 target_tokens: 100000000
@@ -6,14 +6,13 @@ sequence_length: 8192
 val_ratio: 0.01
 seed: 42
 
-tokenizer_path: /data/aina-tokenizer
-fallback_tokenizer: gpt2
-output_dir: /data/aina-dataset/sft/aina-code-500m-instruct-v1-8k
-work_dir: /data/aina-dataset/work/sft-500m-8k
-progress_path: /data/aina-dataset/work/sft-500m-8k/progress.json
-report_path: /data/aina-dataset/work/sft-500m-8k/reports/dataset_report.json
+tokenizer_path: /data/aina-code/tokenizers/gpt2-8k-chat
+output_dir: /data/aina-code/datasets/aina-1-code-0.5b-8k/sft
+work_dir: /data/aina-code/work/aina-1-code-0.5b-8k/sft
+progress_path: /data/aina-code/work/aina-1-code-0.5b-8k/sft/progress.json
+report_path: /data/aina-code/work/aina-1-code-0.5b-8k/sft/reports/dataset_report.json
 
-s3_output: s3://aina-code-datasets/v1/sft/aina-code-500m-instruct-v1-8k/
+s3_output: s3://aina-code/v1/datasets/aina-1-code-0.5b-8k/sft/
 
 checkpoint_interval_tokens: 10000000
 s3_upload_interval_tokens: 10000000

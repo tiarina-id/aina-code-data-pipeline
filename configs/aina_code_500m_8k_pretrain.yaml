@@ -1,4 +1,4 @@
-project_name: aina-code-500m-8k
+project_name: aina-1-code-0.5b-8k-pretrain
 output_mode: pretrain
 artifact_format: tokenized_binary_shards
 target_tokens: 10000000000
@@ -8,14 +8,13 @@ loss_shift: model_internal
 val_ratio: 0.001
 seed: 42
 
-tokenizer_path: /data/aina-tokenizer
-fallback_tokenizer: gpt2
-output_dir: /data/aina-dataset/pretrain/aina-code-500m-10b-8k
-work_dir: /data/aina-dataset/work/pretrain-500m-10b-8k
-progress_path: /data/aina-dataset/work/pretrain-500m-10b-8k/progress.json
-report_path: /data/aina-dataset/work/pretrain-500m-10b-8k/reports/dataset_report.json
+tokenizer_path: /data/aina-code/tokenizers/gpt2-8k-chat
+output_dir: /data/aina-code/datasets/aina-1-code-0.5b-8k/pretrain
+work_dir: /data/aina-code/work/aina-1-code-0.5b-8k/pretrain
+progress_path: /data/aina-code/work/aina-1-code-0.5b-8k/pretrain/progress.json
+report_path: /data/aina-code/work/aina-1-code-0.5b-8k/pretrain/reports/dataset_report.json
 
-s3_output: s3://aina-code-datasets/v1/pretrain/aina-code-500m-10b-8k/
+s3_output: s3://aina-code/v1/datasets/aina-1-code-0.5b-8k/pretrain/
 
 base_ratio: 0.97
 mixed_instruct_ratio: 0.03

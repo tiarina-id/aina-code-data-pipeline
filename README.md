@@ -60,52 +60,52 @@ python -m pip install -e .
 
 ```bash
 export HF_TOKEN="hf_xxx"
-export HF_HOME=/data/hf-cache
-export HF_DATASETS_CACHE=/data/hf-cache/datasets
+export HF_HOME=/data/aina-code/hf-cache
+export HF_DATASETS_CACHE=/data/aina-code/hf-cache/datasets
 aws sts get-caller-identity
 ```
 
 ## Local Build
 
-Pretrain 3M local dataset:
+Pretrain 3M 1K mini dataset:
 
 ```bash
 python scripts/build_dataset.py \
-  --config configs/aina_code_pretrain_3m_local_18m.yaml \
+  --config configs/aina_code_3m_1k_pretrain.yaml \
   --no-resume
 ```
 
-SFT 3M local dataset:
+SFT 3M 1K mini dataset:
 
 ```bash
 python scripts/build_dataset.py \
-  --config configs/aina_code_sft_3m_local.yaml \
+  --config configs/aina_code_3m_1k_sft.yaml \
   --no-resume
 ```
 
 ## Server Build
 
-50M model dataset:
+50M 2K model dataset:
 
 ```bash
 python scripts/build_dataset.py \
-  --config configs/aina_code_pretrain_50m_server_1b.yaml \
+  --config configs/aina_code_50m_2k_pretrain.yaml \
   --resume
 
 python scripts/build_dataset.py \
-  --config configs/aina_code_sft_50m_server.yaml \
+  --config configs/aina_code_50m_2k_sft.yaml \
   --resume
 ```
 
-500M model dataset:
+500M 8K model dataset:
 
 ```bash
 python scripts/build_dataset.py \
-  --config configs/aina_code_pretrain_500m_server_10b.yaml \
+  --config configs/aina_code_500m_8k_pretrain.yaml \
   --resume
 
 python scripts/build_dataset.py \
-  --config configs/aina_code_sft_500m_server.yaml \
+  --config configs/aina_code_500m_8k_sft.yaml \
   --resume
 ```
 
@@ -121,4 +121,3 @@ python -m unittest discover -s tests -v
 - SFT uses JSONL messages shards.
 - S3 checkpoint uses `checkpoint/READY.json` to avoid restoring half-uploaded checkpoint.
 - For CPU preprocessing, PyTorch is not required.
-
