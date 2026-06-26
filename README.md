@@ -78,8 +78,8 @@ Setelah setup selesai:
 
 ```bash
 source ~/.bashrc
-export HF_TOKEN="hf_xxx"
 export AWS_DEFAULT_REGION=ap-southeast-3
+export HF_TOKEN="hf_xxx"
 
 aws sts get-caller-identity
 aws s3 ls s3://aina-code
@@ -89,6 +89,7 @@ deactivate 2>/dev/null || true
 tmux new -s preproc
 
 source .venv/bin/activate
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 ```
 
 Mini test 3M 1K:
@@ -182,4 +183,5 @@ python -m unittest discover -s tests -v
 - Pretrain uses tokenized binary shards.
 - SFT uses JSONL messages shards.
 - S3 checkpoint uses `checkpoint/READY.json` to avoid restoring half-uploaded checkpoint.
+- S3 checkpoint uploads shard outputs incrementally: existing `train-*`/`val-*` objects with the same size are not uploaded again.
 - For CPU preprocessing, PyTorch is not required.

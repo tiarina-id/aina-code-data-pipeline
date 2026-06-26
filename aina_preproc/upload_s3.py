@@ -5,9 +5,16 @@ from urllib.parse import urlparse
 from typing import Any
 
 
-def upload_directory(local_dir: str | Path, s3_uri: str, *, include: set[str] | None = None) -> list[str]:
+def upload_directory(
+    local_dir: str | Path,
+    s3_uri: str,
+    *,
+    include: set[str] | None = None,
+    skip_unchanged: set[str] | None = None,
+) -> list[str]:
     try:
         import boto3
+        from botocore.exceptions import ClientError
     except ImportError as exc:
         raise RuntimeError("Missing dependency 'boto3'. Install with `python3 -m pip install -e .`.") from exc
 
@@ -24,6 +31,15 @@ def upload_directory(local_dir: str | Path, s3_uri: str, *, include: set[str] | 
         ):
             continue
         key = prefix + relative
+        if skip_unchanged and relative in skip_unchanged:
+            try:
+                response = client.head_object(Bucket=bucket, Key=key)
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") not in {"404", "NoSuchKey", "NotFound"}:
+                    raise
+            else:
+                if int(response.get("ContentLength", -1)) == file_path.stat().st_size:
+                    continue
         client.upload_file(str(file_path), bucket, key)
         uploaded.append(f"s3://{bucket}/{key}")
     return uploaded

@@ -1364,15 +1364,22 @@ def write_partial_artifacts(config: PipelineConfig, state: ProgressState) -> Non
 
 def upload_packed_outputs(config: PipelineConfig, state: ProgressState | None) -> list[str]:
     include = {"manifest.json", "metadata.json", "metadata.partial.json", "tokenizer/"}
+    incremental_shards: set[str] = set()
     if state is not None:
-        include.update(shard.path for shard in state.pack_stats.shards if shard.tokens > 0)
-        include.update(shard.path for shard in state.sft_stats.shards if shard.samples > 0)
+        incremental_shards.update(shard.path for shard in state.pack_stats.shards if shard.tokens > 0)
+        incremental_shards.update(shard.path for shard in state.sft_stats.shards if shard.samples > 0)
     else:
-        include.update(path.name for path in Path(config.output_dir).glob("train-*.bin"))
-        include.update(path.name for path in Path(config.output_dir).glob("val-*.bin"))
-        include.update(path.name for path in Path(config.output_dir).glob("train-*.jsonl"))
-        include.update(path.name for path in Path(config.output_dir).glob("val-*.jsonl"))
-    return upload_directory(config.output_dir, config.s3_output or "", include=include)
+        incremental_shards.update(path.name for path in Path(config.output_dir).glob("train-*.bin"))
+        incremental_shards.update(path.name for path in Path(config.output_dir).glob("val-*.bin"))
+        incremental_shards.update(path.name for path in Path(config.output_dir).glob("train-*.jsonl"))
+        incremental_shards.update(path.name for path in Path(config.output_dir).glob("val-*.jsonl"))
+    include.update(incremental_shards)
+    return upload_directory(
+        config.output_dir,
+        config.s3_output or "",
+        include=include,
+        skip_unchanged=incremental_shards,
+    )
 
 
 def checkpoint_artifacts(config: PipelineConfig, prefix: str = "checkpoint/") -> list[tuple[Path, str]]:
